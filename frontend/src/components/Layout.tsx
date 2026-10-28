@@ -55,8 +55,8 @@ export default function Layout() {
       <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 lg:px-10 lg:pb-10 lg:pt-8">
         {DEMO && (
           <div className="mx-auto mb-6 max-w-7xl rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <strong>Démonstration de l'interface.</strong> Les clips affichés ont été produits par le vrai pipeline à partir d'une vidéo de test.
-            L'import, l'analyse et le rendu nécessitent le serveur et sont désactivés ici ; les modifications ne sont pas enregistrées.
+            <strong>Mode navigateur.</strong> Vos vidéos sont traitées sur cet appareil (FFmpeg et Whisper en WebAssembly), sans serveur :
+            c'est plus lent, et tout est perdu en fermant ou rechargeant la page. Téléchargez vos Shorts une fois rendus. Vidéos courtes conseillées (moins de 10 min).
           </div>
         )}
         <div className="mx-auto max-w-7xl"><Outlet /></div>

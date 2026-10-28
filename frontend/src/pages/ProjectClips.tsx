@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ScoreBreakdown from "../components/ScoreBreakdown";
 import { Badge, Button, Card, ErrorBox, PageHeader, ProgressBar, ScoreRing, Spinner } from "../components/ui";
-import { api, downloadAuthed, mediaUrl } from "../lib/api";
+import { api, downloadAuthed, downloadUrl, mediaUrl } from "../lib/api";
 import { CLIP_STATUS, fmtTime, METHOD_LABEL, usePoll } from "../lib/format";
 import type { ClipDetail, Job, Project } from "../lib/types";
 
@@ -104,8 +104,8 @@ function ClipRow({ clip, rank, job, onRender }: { clip: ClipDetail; rank: number
         <ScoreBreakdown breakdown={clip.score_breakdown} />
         <div className="flex flex-wrap gap-2 pt-1">
           <Link to={`/app/clips/${clip.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-700 px-3 py-1.5 text-sm hover:bg-ink-600"><Pencil className="h-3.5 w-3.5" /> Éditer</Link>
-          {video && <a href={`${video}${video.includes("?") ? "&" : "?"}download=1`} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-700 px-3 py-1.5 text-sm hover:bg-ink-600"><Download className="h-3.5 w-3.5" /> MP4</a>}
-          {clip.srt_url && <a href={`${mediaUrl(clip.srt_url)}${clip.srt_url.includes("?") ? "&" : "?"}download=1`} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-700 px-3 py-1.5 text-sm hover:bg-ink-600"><Download className="h-3.5 w-3.5" /> SRT</a>}
+          {video && <a href={downloadUrl(clip.export_url)} download={`${clip.title.slice(0, 40)}.mp4`} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-700 px-3 py-1.5 text-sm hover:bg-ink-600"><Download className="h-3.5 w-3.5" /> MP4</a>}
+          {clip.srt_url && <a href={downloadUrl(clip.srt_url)} download={`${clip.title.slice(0, 40)}.srt`} className="inline-flex items-center gap-1.5 rounded-lg bg-ink-700 px-3 py-1.5 text-sm hover:bg-ink-600"><Download className="h-3.5 w-3.5" /> SRT</a>}
           {(clip.status === "draft" || clip.status === "failed") && <Button size="sm" onClick={onRender} icon={<RefreshCw className="h-3.5 w-3.5" />}>Rendre</Button>}
         </div>
       </div>

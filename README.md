@@ -72,6 +72,18 @@ Ouvrez http://localhost:8000. L'image contient l'API, le frontend compilé et le
 
 Au premier lancement avec `TRANSCRIPTION_PROVIDER=faster_whisper`, le worker télécharge le modèle Whisper depuis Hugging Face (≈ 500 Mo pour `small`) : prévoyez l'accès réseau.
 
+## Version navigateur (GitHub Pages, sans serveur)
+
+Le dossier `docs/` contient une version entièrement statique, publiée par GitHub Pages (Settings → Pages → branche `main`, dossier `/docs`). Les vidéos y sont **réellement traitées sur l'appareil de l'utilisateur** :
+
+- FFmpeg compilé en WebAssembly (`@ffmpeg/core`, multi-cœurs grâce à `coi-serviceworker` qui active l'isolation cross-origin) pour l'extraction audio et le rendu 1080×1920 avec sous-titres incrustés et normalisation −14 LUFS ;
+- Whisper *base* via transformers.js pour la transcription (modèle ≈ 80 Mo téléchargé depuis Hugging Face au premier usage, puis mis en cache) ;
+- la même sélection heuristique et le même score que le serveur (`frontend/src/lib/local/text.ts`, portage de `backend/app/pipeline`).
+
+Limites : traitement plus lent qu'un serveur, vidéos de 30 min maximum (moins de 10 min conseillé), pas de suivi du visage (cadrage centré ou manuel), pas de sélection par Claude, et tout est perdu au rechargement de la page. Un projet d'exemple produit par le pipeline serveur est inclus.
+
+Régénérer : `python scripts/build_demo.py` (exemple), puis `cd frontend && npm run build:demo`.
+
 ## Mise en ligne en un clic (Railway)
 
 L'image Docker démarre l'API **et** le worker dans le même conteneur (`backend/start.sh`), avec SQLite et le stockage local : aucune base ni configuration n'est nécessaire pour un test.

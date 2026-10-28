@@ -1,7 +1,7 @@
 import { Copy, Download, Pencil, Play, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { mediaUrl } from "../lib/api";
+import { downloadUrl, mediaUrl } from "../lib/api";
 import { CLIP_STATUS, fmtTime, METHOD_LABEL } from "../lib/format";
 import type { ClipSummary } from "../lib/types";
 import { Badge, ScoreRing } from "./ui";
@@ -60,7 +60,7 @@ export default function ClipCard({ clip, showProject, onDuplicate, onDelete }: P
             <Pencil className="h-3.5 w-3.5" /> Modifier
           </Link>
           {video && (
-            <a href={`${video}${video.includes("?") ? "&" : "?"}download=1`} download aria-label="Télécharger le MP4" title="Télécharger le MP4"
+            <a href={downloadUrl(clip.export_url)} download={`${clip.title.slice(0, 40)}.mp4`} aria-label="Télécharger le MP4" title="Télécharger le MP4"
               className="rounded-lg p-2 text-mist-400 hover:bg-ink-700 hover:text-mist-100"><Download className="h-3.5 w-3.5" /></a>
           )}
           {onDuplicate && (

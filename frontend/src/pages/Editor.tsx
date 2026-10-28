@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import ScoreBreakdown from "../components/ScoreBreakdown";
 import VerticalPreview, { type PreviewHandle } from "../components/VerticalPreview";
 import { Badge, Button, Card, cx, ErrorBox, Field, Input, Notice, ProgressBar, ScoreRing, Select, Spinner, Textarea, Toggle } from "../components/ui";
-import { api, mediaUrl } from "../lib/api";
+import { api, downloadUrl, mediaUrl } from "../lib/api";
 import { CLIP_STATUS, fmtTime, METHOD_LABEL, STEP_LABELS, usePoll } from "../lib/format";
 import type { ClipDetail, ExportSettings, Job, SubtitleStyle, SystemStatus, Word } from "../lib/types";
 
@@ -348,8 +348,8 @@ export default function Editor() {
                       <p className="text-sm">Dernier rendu : {clip.rendered_at ? new Date(clip.rendered_at).toLocaleString("fr-FR") : "—"}</p>
                       {clip.status === "draft" && <p className="text-sm text-amber-300">Le clip a été modifié depuis ce rendu.</p>}
                       <div className="flex flex-wrap gap-2">
-                        <a href={`${mediaUrl(clip.export_url)}${clip.export_url.includes("?") ? "&" : "?"}download=1`} className="inline-flex items-center gap-2 rounded-xl bg-ink-700 px-4 py-2 text-sm hover:bg-ink-600"><Download className="h-4 w-4" /> MP4</a>
-                        {clip.srt_url && <a href={`${mediaUrl(clip.srt_url)}${clip.srt_url.includes("?") ? "&" : "?"}download=1`} className="inline-flex items-center gap-2 rounded-xl bg-ink-700 px-4 py-2 text-sm hover:bg-ink-600"><Download className="h-4 w-4" /> SRT</a>}
+                        <a href={downloadUrl(clip.export_url)} download={`${clip.title.slice(0, 40)}.mp4`} className="inline-flex items-center gap-2 rounded-xl bg-ink-700 px-4 py-2 text-sm hover:bg-ink-600"><Download className="h-4 w-4" /> MP4</a>
+                        {clip.srt_url && <a href={downloadUrl(clip.srt_url)} download={`${clip.title.slice(0, 40)}.srt`} className="inline-flex items-center gap-2 rounded-xl bg-ink-700 px-4 py-2 text-sm hover:bg-ink-600"><Download className="h-4 w-4" /> SRT</a>}
                       </div>
                     </div>
                   </div>

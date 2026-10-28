@@ -1,4 +1,4 @@
-import { DEMO, demoApi } from "./demo";
+import { DEMO, demoApi, demoUpload } from "./demo";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 const TOKEN_KEY = "viralcut.token";
@@ -30,7 +30,14 @@ export function setToken(token: string | null) {
 /** URL absolue pour les médias renvoyés par l'API (chemins relatifs signés ou URL S3). */
 export function mediaUrl(u: string | null | undefined): string | undefined {
   if (!u) return undefined;
-  return u.startsWith("http") ? u : `${BASE}${u}`;
+  return /^(https?:|blob:|data:)/.test(u) || !u.startsWith("/") ? u : `${BASE}${u}`;
+}
+
+/** Lien de téléchargement (le serveur force l'enregistrement avec ?download=1). */
+export function downloadUrl(u: string | null | undefined): string | undefined {
+  const m = mediaUrl(u);
+  if (!m || !m.includes("/api/media")) return m;
+  return `${m}${m.includes("?") ? "&" : "?"}download=1`;
 }
 
 function detail(body: unknown, fallback: string): string {
@@ -45,7 +52,7 @@ function detail(body: unknown, fallback: string): string {
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   if (DEMO) {
     try {
-      return (await demoApi(path, (init.method ?? "GET").toUpperCase(), init.json)) as T;
+      return (await demoApi(path, (init.method ?? "GET").toUpperCase(), init.json, init.body)) as T;
     } catch (e) {
       throw new ApiError(501, (e as Error).message);
     }
@@ -83,7 +90,8 @@ export function uploadVideo(
   onProgress: (loaded: number, total: number) => void,
 ): { promise: Promise<unknown>; abort: () => void } {
   if (DEMO) {
-    return { promise: Promise.reject(new ApiError(501, "L'import nécessite le serveur : indisponible dans la démonstration.")), abort: () => {} };
+    const promise = demoUpload(projectId, file, onProgress).catch((e) => { throw new ApiError(422, (e as Error).message); });
+    return { promise, abort: () => {} };
   }
   const xhr = new XMLHttpRequest();
   const params = new URLSearchParams({ filename: file.name, rights_confirmed: "true" });
@@ -111,7 +119,7 @@ export function uploadVideo(
 }
 
 export async function downloadAuthed(path: string, filename: string) {
-  if (DEMO) throw new ApiError(501, "L'export groupé nécessite le serveur : téléchargez les clips un par un dans la démonstration.");
+  if (DEMO) throw new ApiError(501, "L'export groupé (.zip) nécessite le serveur : téléchargez les clips un par un.");
   const token = getToken();
   const res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) {
