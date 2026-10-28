@@ -1,11 +1,12 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./index.css";
 import Layout from "./components/Layout";
 import ClipLibrary from "./components/ClipLibrary";
 import { PageHeader, Spinner } from "./components/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { DEMO } from "./lib/demo";
 import Analysis from "./pages/Analysis";
 import Dashboard from "./pages/Dashboard";
 import Editor from "./pages/Editor";
@@ -32,10 +33,13 @@ function AllClips() {
   );
 }
 
+// GitHub Pages ne sait pas servir les URL profondes : routage par « # » en démonstration
+const Router = DEMO ? HashRouter : BrowserRouter;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AuthProvider>
-      <BrowserRouter>
+      <Router>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -50,7 +54,7 @@ createRoot(document.getElementById("root")!).render(
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </Router>
     </AuthProvider>
   </StrictMode>,
 );

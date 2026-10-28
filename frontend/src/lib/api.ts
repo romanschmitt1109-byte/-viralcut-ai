@@ -1,3 +1,5 @@
+import { DEMO, demoApi } from "./demo";
+
 const BASE = import.meta.env.VITE_API_URL ?? "";
 const TOKEN_KEY = "viralcut.token";
 
@@ -8,6 +10,7 @@ export class ApiError extends Error {
 }
 
 export function getToken(): string | null {
+  if (DEMO) return "demo";
   try {
     return localStorage.getItem(TOKEN_KEY);
   } catch {
@@ -40,6 +43,13 @@ function detail(body: unknown, fallback: string): string {
 }
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  if (DEMO) {
+    try {
+      return (await demoApi(path, (init.method ?? "GET").toUpperCase(), init.json)) as T;
+    } catch (e) {
+      throw new ApiError(501, (e as Error).message);
+    }
+  }
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -72,6 +82,9 @@ export function uploadVideo(
   file: File,
   onProgress: (loaded: number, total: number) => void,
 ): { promise: Promise<unknown>; abort: () => void } {
+  if (DEMO) {
+    return { promise: Promise.reject(new ApiError(501, "L'import nécessite le serveur : indisponible dans la démonstration.")), abort: () => {} };
+  }
   const xhr = new XMLHttpRequest();
   const params = new URLSearchParams({ filename: file.name, rights_confirmed: "true" });
   const promise = new Promise((resolve, reject) => {
@@ -98,6 +111,7 @@ export function uploadVideo(
 }
 
 export async function downloadAuthed(path: string, filename: string) {
+  if (DEMO) throw new ApiError(501, "L'export groupé nécessite le serveur : téléchargez les clips un par un dans la démonstration.");
   const token = getToken();
   const res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) {

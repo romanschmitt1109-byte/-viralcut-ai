@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  // chemins relatifs pour la démo statique (GitHub Pages, sous-dossier du dépôt)
+  base: process.env.VITE_DEMO === "1" ? "./" : "/",
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

@@ -1,0 +1,39 @@
+1
+00:00:00,150 --> 00:00:02,841
+Pourquoi la plupart des gens échouent avec
+
+2
+00:00:02,866 --> 00:00:03,740
+leur budget ?
+
+3
+00:00:04,099 --> 00:00:06,265
+Parce qu'ils ne mesurent jamais ce qu'ils
+
+4
+00:00:06,294 --> 00:00:07,297
+dépensent vraiment.
+
+5
+00:00:07,690 --> 00:00:09,487
+J'ai fait l'expérience pendant trente
+
+6
+00:00:09,514 --> 00:00:09,823
+jours.
+
+7
+00:00:10,199 --> 00:00:12,062
+Chaque café, chaque abonnement, chaque
+
+8
+00:00:12,089 --> 00:00:12,692
+petit achat.
+
+9
+00:00:13,069 --> 00:00:15,557
+Le résultat m'a choqué : quatre cents
+
+10
+00:00:15,589 --> 00:00:18,072
+euros partaient sans que je le sache.
