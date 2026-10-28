@@ -72,6 +72,17 @@ Ouvrez http://localhost:8000. L'image contient l'API, le frontend compilé et le
 
 Au premier lancement avec `TRANSCRIPTION_PROVIDER=faster_whisper`, le worker télécharge le modèle Whisper depuis Hugging Face (≈ 500 Mo pour `small`) : prévoyez l'accès réseau.
 
+## Mise en ligne en un clic (Railway)
+
+L'image Docker démarre l'API **et** le worker dans le même conteneur (`backend/start.sh`), avec SQLite et le stockage local : aucune base ni configuration n'est nécessaire pour un test.
+
+1. https://railway.com → **New Project** → **Deploy from GitHub repo** → choisissez ce dépôt.
+2. Railway détecte le `Dockerfile` et construit l'image (5 à 10 min).
+3. Onglet **Settings** du service → **Networking** → **Generate Domain** → port **8000**.
+4. Ouvrez l'URL fournie.
+
+Variables facultatives (onglet **Variables**) : `ANTHROPIC_API_KEY` pour la sélection par Claude, `WHISPER_MODEL=small` si le service dispose d'au moins 2 Go de RAM. Sans volume, les données sont effacées à chaque redéploiement : ajoutez un volume monté sur `/data` pour les conserver.
+
 ## Développement local
 
 Prérequis : Python 3.12+, Node 20+, **FFmpeg compilé avec libass** (`ffmpeg -filters | grep ass`), fontconfig.

@@ -17,6 +17,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://viralcut:${POSTGRES_PASSWORD:-viralcut}@db:5432/viralcut
+      EMBEDDED_WORKER: "0"   # le worker tourne dans son propre service ci-dessous
     ports: ["8000:8000"]
     volumes: [media:/data]
     depends_on: { db: { condition: service_healthy } }

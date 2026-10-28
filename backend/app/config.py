@@ -129,12 +129,21 @@ class Settings:
         return p
 
     def validate(self) -> None:
-        if not self.jwt_secret:
-            if self.env == "production":
-                raise RuntimeError("JWT_SECRET doit être défini en production")
-            self.jwt_secret = "dev-only-insecure-secret-change-me"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.work_dir.mkdir(parents=True, exist_ok=True)
+        if not self.jwt_secret:
+            # Aucune clé fournie : on en génère une aléatoire, conservée dans le stockage
+            # pour que les sessions survivent aux redémarrages (API et worker la partagent).
+            import secrets
+
+            f = self.storage_dir / ".jwt_secret"
+            if not f.exists():
+                try:
+                    with f.open("x") as fh:
+                        fh.write(secrets.token_urlsafe(48))
+                except FileExistsError:
+                    pass
+            self.jwt_secret = f.read_text().strip()
 
 
 settings = Settings()

@@ -19,6 +19,10 @@ COPY backend/ ./
 COPY --from=web /web/dist /app/frontend/dist
 RUN useradd -m viralcut && mkdir -p /data/storage /data/work && chown -R viralcut /data
 USER viralcut
-ENV STORAGE_DIR=/data/storage WORK_DIR=/data/work HF_HOME=/data/hf
+# Valeurs par défaut prêtes pour un test sur un seul service (toutes surchargeables)
+ENV STORAGE_DIR=/data/storage WORK_DIR=/data/work HF_HOME=/data/hf \
+    DATABASE_URL=sqlite:////data/viralcut.db \
+    WHISPER_MODEL=base WHISPER_COMPUTE_TYPE=int8 \
+    EMBEDDED_WORKER=1
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+CMD ["./start.sh"]
