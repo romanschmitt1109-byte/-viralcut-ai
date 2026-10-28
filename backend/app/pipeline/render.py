@@ -63,10 +63,14 @@ def build_filtergraph(spec: RenderSpec, seek0: float) -> str:
     else:
         parts.append("[vf]null[vout]")
 
+    # asetpts=N/SR/TB : loudnorm placé après concat produit des horodatages audio faux
+    # (piste raccourcie dans ffmpeg.wasm, début décalé en natif) ; on les recalcule
+    # à partir du nombre réel d'échantillons.
+    tail = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=N/SR/TB"
     if spec.normalize_audio:
-        parts.append(f"[ac]loudnorm=I={spec.target_lufs}:TP=-1.5:LRA=11,aresample=48000[aout]")
+        parts.append(f"[ac]loudnorm=I={spec.target_lufs}:TP=-1.5:LRA=11,{tail}[aout]")
     else:
-        parts.append("[ac]aresample=48000[aout]")
+        parts.append(f"[ac]{tail}[aout]")
     return ";".join(parts)
 
 

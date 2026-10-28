@@ -160,7 +160,7 @@ export function renderShort(spec: RenderSpec, onProgress: (f: number) => void): 
       await ff.writeFile("/subs.ass", new TextEncoder().encode(spec.ass));
       f.push("[vf]ass=filename=/subs.ass:fontsdir=/fonts[vout]");
     } else f.push("[vf]null[vout]");
-    f.push(spec.normalize ? `[ac]loudnorm=I=${spec.lufs}:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[aout]` : "[ac]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[aout]");
+    f.push(spec.normalize ? `[ac]loudnorm=I=${spec.lufs}:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=N/SR/TB[aout]` : "[ac]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=N/SR/TB[aout]");
     await run(ff, [
       "-ss", seek0.toFixed(3), "-t", span.toFixed(3), "-i", path,
       "-filter_complex", f.join(";"), "-map", "[vout]", "-map", "[aout]",

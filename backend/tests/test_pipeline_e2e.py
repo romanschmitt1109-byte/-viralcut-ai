@@ -46,6 +46,9 @@ def test_full_pipeline_generates_vertical_subtitled_shorts(client, auth, sample_
         assert info.has_audio
         expected = sum(e - s for s, e in detail["segments"])
         assert abs(info.duration - expected) < 0.35, (info.duration, expected)
+        # la piste AUDIO doit couvrir toute l'image (horodatages corrects)
+        v_dur, a_dur = _stream_durations(path)
+        assert abs(a_dur - v_dur) < 0.15, (v_dur, a_dur)
         # le lecteur peut charger le fichier (requête Range partielle)
         rr = client.get(detail["export_url"], headers={"Range": "bytes=0-99"})
         assert rr.status_code == 206 and len(rr.content) == 100
@@ -118,6 +121,14 @@ def test_manual_clip_aligned_on_sentences(client, auth, sample_video, sample_srt
     c = r.json()
     assert c["selection_method"] == "manual"
     assert c["subtitles"]["words"][0]["w"][0].isupper()  # commence en début de phrase
+
+
+def _stream_durations(path) -> tuple[float, float]:
+    import subprocess
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True, check=True).stdout.split()
+    d = dict(line.split(",") for line in out)
+    return float(d["video"]), float(d["audio"])
 
 
 def _key(url: str) -> str:
