@@ -1,0 +1,37 @@
+# Démarrage : cp .env.example .env  (puis renseigner JWT_SECRET et les clés)  ;  docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: viralcut
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-viralcut}
+      POSTGRES_DB: viralcut
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viralcut"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://viralcut:${POSTGRES_PASSWORD:-viralcut}@db:5432/viralcut
+    ports: ["8000:8000"]
+    volumes: [media:/data]
+    depends_on: { db: { condition: service_healthy } }
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://viralcut:${POSTGRES_PASSWORD:-viralcut}@db:5432/viralcut
+    volumes: [media:/data]
+    depends_on: { db: { condition: service_healthy } }
+    deploy:
+      replicas: 1   # augmentez pour paralléliser les rendus
+
+volumes:
+  pgdata:
+  media:
