@@ -9,10 +9,9 @@ import { env, pipeline } from "@huggingface/transformers";
 env.allowLocalModels = false;
 
 type Word = { w: string; s: number; e: number };
-type Msg = { audio: Float32Array; language: string | null; model: string };
+type Msg = { audio: Float32Array; language: string; windows: [number, number][]; model: string };
 
 const SR = 16000;
-const WINDOW = 30;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let asr: any = null;
 let loaded = "";
@@ -37,37 +36,41 @@ async function load(model: string) {
 }
 
 self.onmessage = async (e: MessageEvent<Msg>) => {
-  const { audio, language, model } = e.data;
+  const { audio, language, windows, model } = e.data;
   try {
     await load(model);
     post({ type: "ready", wordLevel });
     const words: Word[] = [];
     const total = audio.length / SR;
-    for (let off = 0; off < total; off += WINDOW) {
-      const chunk = audio.subarray(Math.floor(off * SR), Math.floor(Math.min(total, off + WINDOW) * SR));
-      if (chunk.length < SR * 0.3) break;
-      const opts: Record<string, unknown> = { return_timestamps: wordLevel ? "word" : true, task: "transcribe" };
-      if (language) opts.language = language;
-      const out = await asr(chunk, opts);
+    for (const [ws, we] of windows) {
+      const chunk = audio.subarray(Math.floor(ws * SR), Math.floor(Math.min(total, we) * SR));
+      if (chunk.length < SR * 0.3) continue;
+      // fenêtres de 30 s avec recouvrement gérés par la bibliothèque (pas de mots coupés)
+      const out = await asr(chunk, {
+        return_timestamps: wordLevel ? "word" : true, task: "transcribe", language,
+        chunk_length_s: 30, stride_length_s: 5,
+      });
       for (const c of (out.chunks ?? []) as { text: string; timestamp: [number, number | null] }[]) {
         const [s, e2] = c.timestamp;
-        const end = e2 ?? Math.min(WINDOW, s + 1);
+        if (s == null) continue;
+        const end = e2 ?? s + 0.5;
         if (wordLevel) {
           const t = c.text.trim();
-          if (t) words.push({ w: t, s: off + s, e: off + end });
+          if (t) words.push({ w: t, s: ws + s, e: ws + end });
         } else {
           const toks = c.text.trim().split(/\s+/).filter(Boolean);
           const tot = toks.reduce((a, t) => a + t.length + 1, 0);
           let t = s;
           for (const tok of toks) {
             const d = ((end - s) * (tok.length + 1)) / tot;
-            words.push({ w: tok, s: off + t, e: off + t + d * 0.92 });
+            words.push({ w: tok, s: ws + t, e: ws + t + d * 0.92 });
             t += d;
           }
         }
       }
-      post({ type: "progress", value: Math.min(1, (off + WINDOW) / total) });
+      post({ type: "progress", value: Math.min(1, we / total) });
     }
+    words.sort((a, b) => a.s - b.s);
     post({ type: "done", words, approximate: !wordLevel });
   } catch (err) {
     post({ type: "error", message: (err as Error).message ?? String(err) });

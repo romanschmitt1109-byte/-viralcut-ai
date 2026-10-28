@@ -327,3 +327,67 @@ export function parseSubtitles(content: string): Word[] {
   if (!words.length) throw new Error("Le fichier de sous-titres ne contient aucune réplique exploitable.");
   return cleanWords(words);
 }
+
+// ----------------------------------------------------------------------------- silences (audio réel)
+/** Silences détectés sur le volume réel (fenêtres de 20 ms), seuil adapté au bruit de fond.
+ *  Équivalent navigateur du `silencedetect` de FFmpeg utilisé côté serveur. */
+export function detectSilences(audio: Float32Array, sr = 16000, minDur = 0.45): [number, number][] {
+  const hop = Math.round(sr * 0.02);
+  const db: number[] = [];
+  for (let i = 0; i + hop <= audio.length; i += hop) {
+    let sum = 0;
+    for (let k = i; k < i + hop; k++) sum += audio[k] * audio[k];
+    db.push(10 * Math.log10(sum / hop + 1e-10));
+  }
+  if (!db.length) return [];
+  const sorted = [...db].sort((a, b) => a - b);
+  const floor = sorted[Math.floor(sorted.length * 0.1)];
+  const speech = sorted[Math.floor(sorted.length * 0.7)];
+  // seuil entre le bruit de fond et la parole, borné à [-50, -28] dBFS
+  const thr = Math.max(-50, Math.min(-28, floor + (speech - floor) * 0.3));
+  const out: [number, number][] = [];
+  let start = -1;
+  db.forEach((v, i) => {
+    if (v < thr) { if (start < 0) start = i; }
+    else if (start >= 0) {
+      if ((i - start) * 0.02 >= minDur) out.push([r3(start * 0.02), r3(i * 0.02)]);
+      start = -1;
+    }
+  });
+  if (start >= 0 && (db.length - start) * 0.02 >= minDur) out.push([r3(start * 0.02), r3(db.length * 0.02)]);
+  return out;
+}
+
+/** Retire uniquement les silences RÉELS (volume bas) de plus de `maxGap` s,
+ *  en gardant `pad` s de respiration : la parole n'est jamais coupée, même si la
+ *  transcription a manqué des mots. */
+export function keepSegmentsBySilence(silences: [number, number][], start: number, end: number, remove = true, maxGap = 0.6, pad = 0.15): [number, number][] {
+  if (!remove) return [[start, end]];
+  const cuts = silences
+    .map(([a, b]) => [Math.max(a, start), Math.min(b, end)] as [number, number])
+    .filter(([a, b]) => b - a > maxGap)
+    .map(([a, b]) => [a === start ? a : a + pad, b === end ? b : b - pad] as [number, number]);
+  const segs: [number, number][] = [];
+  let cur = start;
+  for (const [a, b] of cuts) {
+    if (a > cur + 0.05) segs.push([r3(cur), r3(a)]);
+    cur = Math.max(cur, b);
+  }
+  if (end > cur + 0.05) segs.push([r3(cur), r3(end)]);
+  return segs.length ? segs : [[start, end]];
+}
+
+/** Découpe l'audio en fenêtres d'environ 1 à 2 min, coupées au milieu d'un silence
+ *  pour ne jamais trancher un mot entre deux passes de Whisper. */
+export function audioWindows(silences: [number, number][], total: number, min = 60, max = 120): [number, number][] {
+  const out: [number, number][] = [];
+  let s = 0;
+  while (total - s > max) {
+    const gap = silences.find(([a, b]) => (a + b) / 2 > s + min && (a + b) / 2 < s + max);
+    const cut = gap ? (gap[0] + gap[1]) / 2 : s + max;
+    out.push([s, cut]);
+    s = cut;
+  }
+  out.push([s, total]);
+  return out;
+}

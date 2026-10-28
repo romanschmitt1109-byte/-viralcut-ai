@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "rea
 import { useNavigate } from "react-router-dom";
 import { Button, Card, cx, ErrorBox, Field, Input, Notice, PageHeader, ProgressBar, Select, Toggle } from "../components/ui";
 import { api, uploadVideo } from "../lib/api";
+import { DEMO } from "../lib/demo";
 import { fmtBytes, fmtTime } from "../lib/format";
 import type { Project, Usage } from "../lib/types";
 
@@ -25,7 +26,7 @@ export default function Import() {
   const [yt, setYt] = useState<YtMeta | null>(null);
   const [ytLoading, setYtLoading] = useState(false);
   const [title, setTitle] = useState("");
-  const [language, setLanguage] = useState("auto");
+  const [language, setLanguage] = useState(DEMO ? "fr" : "auto");
   const [count, setCount] = useState(5);
   const [minD, setMinD] = useState(15);
   const [maxD, setMaxD] = useState(60);
@@ -175,7 +176,7 @@ export default function Import() {
           <Field label="Titre du projet"><Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder="Nom du projet" /></Field>
           <Field label="Langue de la vidéo">
             <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="auto">Détection automatique</option><option value="fr">Français</option><option value="en">Anglais</option>
+              {!DEMO && <option value="auto">Détection automatique</option>}<option value="fr">Français</option><option value="en">Anglais</option>
               <option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option>
             </Select>
           </Field>

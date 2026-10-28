@@ -10,14 +10,14 @@
 import type { ClipDetail, ClipSummary, Job, Project, SubtitleStyle, Word } from "../types";
 import { extractAudio, FONT_NAME, probe, renderShort, thumbnail, type Probe } from "./media";
 import {
-  buildAss, buildSrt, cleanWords, combine, keepSegments, measuredPace, parseSubtitles, remapWords, selectPassages,
+  audioWindows, buildAss, buildSrt, cleanWords, combine, detectSilences, keepSegments, keepSegmentsBySilence, measuredPace, parseSubtitles, remapWords, selectPassages,
   splitSentences, WEIGHTS,
 } from "./text";
 
 export class LocalError extends Error {}
 
 type LProject = Project & { file?: File; probe?: Probe; transcript?: Transcript; example?: boolean };
-type Transcript = { language: string; provider: string; approximate: boolean; words: Word[]; raw?: unknown };
+type Transcript = { language: string; provider: string; approximate: boolean; words: Word[]; silences?: [number, number][]; raw?: unknown };
 
 const EXT = [".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"];
 const MAX_MINUTES = 30;
@@ -121,9 +121,17 @@ const step = (j: Job, name: string, progress: number, msg?: string) => {
 };
 const sub = (j: Job, lo: number, hi: number) => (f: number) => { j.progress = Math.round((lo + (hi - lo) * f) * 10) / 10; };
 
+const LANG_NAMES: Record<string, string> = { fr: "français", en: "anglais", es: "espagnol", de: "allemand", it: "italien", pt: "portugais" };
+
+/** Coupes basées sur les silences réels de l'audio quand ils sont connus. */
+function segmentsFor(p: LProject, words: Word[], start: number, end: number, remove: boolean): [number, number][] {
+  const sil = p.transcript?.silences;
+  return sil ? keepSegmentsBySilence(sil, start, end, remove) : keepSegments(words, start, end, remove);
+}
+
 // --------------------------------------------------------------------------- transcription
 let whisper: Worker | null = null;
-function transcribe(j: Job, audio: Float32Array, language: string | null): Promise<{ words: Word[]; approximate: boolean }> {
+function transcribe(j: Job, audio: Float32Array, language: string, windows: [number, number][]): Promise<{ words: Word[]; approximate: boolean }> {
   whisper ??= new Worker(new URL("./whisper.worker.ts", import.meta.url), { type: "module" });
   return new Promise((resolve, reject) => {
     let lastDl = -1;
@@ -139,7 +147,7 @@ function transcribe(j: Job, audio: Float32Array, language: string | null): Promi
       else if (m.type === "error") reject(new LocalError(`Échec de la transcription : ${m.message}. Le premier usage télécharge le modèle (≈ 80 Mo) : vérifiez la connexion.`));
     };
     whisper!.onerror = (e) => reject(new LocalError(`Échec du module de transcription : ${e.message}`));
-    whisper!.postMessage({ audio, language, model: WHISPER_MODEL }, [audio.buffer]);
+    whisper!.postMessage({ audio, language, windows, model: WHISPER_MODEL });
   });
 }
 
@@ -149,15 +157,23 @@ async function runAnalysis(j: Job) {
   if (!p?.file || !p.probe) throw new LocalError("Aucune vidéo importée pour ce projet.");
   p.status = "processing"; p.error = null;
   const duration = p.probe.duration;
-  if (!p.transcript) {
+  if (!p.transcript?.silences) {
     step(j, "extract_audio", 2, "Chargement de FFmpeg et extraction de l'audio");
     const audio = await extractAudio(p.file, duration, sub(j, 2, 10));
-    step(j, "transcribe", 10, `Transcription (Whisper ${WHISPER_MODEL}, dans le navigateur)`);
-    const lang = p.language === "auto" ? null : p.language;
-    const res = await transcribe(j, audio, lang);
-    const words = cleanWords(res.words);
-    p.transcript = { language: lang ?? "auto", provider: "whisper-navigateur", approximate: res.approximate, words };
-    log(j, `${words.length} mots transcrits`);
+    const silences = detectSilences(audio);
+    log(j, `${silences.length} silences détectés sur l'audio`);
+    if (!p.transcript) {
+      // Whisper dans le navigateur impose l'anglais si aucune langue n'est donnée (il traduit alors !)
+      const lang = p.language === "auto" ? "fr" : p.language;
+      step(j, "transcribe", 10, `Transcription en ${LANG_NAMES[lang] ?? lang} (Whisper ${WHISPER_MODEL}, dans le navigateur)`);
+      const res = await transcribe(j, audio, lang, audioWindows(silences, duration));
+      const words = cleanWords(res.words);
+      p.transcript = { language: lang, provider: "whisper-navigateur", approximate: res.approximate, words, silences };
+      log(j, `${words.length} mots transcrits`);
+    } else {
+      p.transcript.silences = silences;
+      step(j, "transcribe", 60, "Transcription importée utilisée");
+    }
   } else step(j, "transcribe", 60, "Transcription existante réutilisée");
 
   const words = p.transcript.words.filter((w) => w.e <= duration + 0.05);
@@ -174,7 +190,7 @@ async function runAnalysis(j: Job) {
   for (const pr of props) {
     const [pace, measures] = measuredPace(words, pr.start, pr.end);
     const subs = { ...pr.scores, pace };
-    const segs = keepSegments(words, pr.start, pr.end, p.remove_silences);
+    const segs = segmentsFor(p, words, pr.start, pr.end, p.remove_silences);
     const id = uid();
     clips.set(id, {
       id, project_id: p.id, project_title: p.title, start: pr.start, end: pr.end,
@@ -203,7 +219,7 @@ async function runRender(j: Job) {
   c.status = "rendering"; c.error = null;
   const es = c.export_settings!;
   step(j, "segments", 3, "Calcul des segments conservés");
-  const segs = keepSegments(c.subtitles?.words ?? [], c.start, c.end, es.remove_silences);
+  const segs = segmentsFor(p, c.subtitles?.words ?? [], c.start, c.end, es.remove_silences);
   c.segments = segs;
   step(j, "framing", 6, c.crop_auto ? "Cadrage centré (le suivi du visage n'est disponible que sur le serveur)" : "Cadrage manuel");
   step(j, "subtitles", 25, "Génération des sous-titres");
@@ -379,7 +395,7 @@ export async function localApi(path: string, method: string, json: unknown, body
       if (b.subtitle_style && c.subtitles) { c.subtitles.style = b.subtitle_style as SubtitleStyle; render = true; }
       if (b.export_settings && c.export_settings) { Object.assign(c.export_settings, b.export_settings); render = true; }
       if (render) {
-        c.segments = keepSegments(c.subtitles?.words ?? [], c.start, c.end, c.export_settings?.remove_silences ?? true);
+        c.segments = segmentsFor(p, c.subtitles?.words ?? [], c.start, c.end, c.export_settings?.remove_silences ?? true);
         c.duration = Math.round(c.segments.reduce((a, [s, e]) => a + e - s, 0) * 100) / 100;
         if (c.status === "ready" || c.status === "failed") c.status = "draft";
       }
