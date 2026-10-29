@@ -1,4 +1,5 @@
 import { ArrowRight, Check, ChevronDown, Circle, Loader2, RefreshCw, ScrollText, XCircle } from "lucide-react";
+import LoadError from "../components/LoadError";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, cx, ErrorBox, Notice, PageHeader, ProgressBar, Spinner } from "../components/ui";
@@ -38,7 +39,7 @@ export default function Analysis() {
     }
   }, [showTranscript, transcript, project?.has_transcript, id]);
 
-  if (!project) return error ? <ErrorBox>{error}</ErrorBox> : <Spinner />;
+  if (!project) return error ? <LoadError message={error} /> : <Spinner />;
 
   const analyze = jobs.find((j) => j.kind === "analyze");
   const renders = jobs.filter((j) => j.kind === "render" && j.created_at >= (analyze?.created_at ?? ""));

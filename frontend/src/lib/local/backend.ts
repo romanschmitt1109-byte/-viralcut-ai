@@ -13,6 +13,7 @@ import {
   audioWindows, buildAss, buildSrt, cleanWords, combine, detectSilences, keepSegments, keepSegmentsBySilence, measuredPace, parseSubtitles, remapWords, selectPassages,
   splitSentences, WEIGHTS,
 } from "./text";
+import { deleteBlobs, getBlob, loadState, putBlob, requestPersistence, saveState } from "./persist";
 
 export class LocalError extends Error {}
 
@@ -50,8 +51,78 @@ function seed(): Promise<void> {
     projects.set(p.id, p);
     for (const c of d.clips as ClipDetail[]) clips.set(c.id, { ...c, project_title: p.title });
     jobs.push(...(d.jobs as Job[]));
-  });
+  }).then(restore);
   return seeded;
+}
+
+// --------------------------------------------------------------------------- sauvegarde locale
+type Snapshot = { version: 1; user: Record<string, unknown>; projects: LProject[]; clips: ClipDetail[]; jobs: Job[] };
+const isExample = (pid: string) => !!projects.get(pid)?.example;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Enregistre l'état (sans les fichiers, stockés à part) ; regroupe les écritures rapprochées. */
+function persist() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const strip = { video_url: null, thumbnail_url: null };
+    const snap: Snapshot = {
+      version: 1, user,
+      projects: [...projects.values()].filter((p) => !p.example).map((p) => {
+        const { file: _f, ...rest } = p;
+        void _f;
+        return { ...rest, source: rest.source ? { ...rest.source, ...strip } : null } as LProject;
+      }),
+      clips: [...clips.values()].filter((c) => !isExample(c.project_id))
+        .map((c) => ({ ...c, export_url: null, thumbnail_url: null, srt_url: null, source: null })),
+      jobs: jobs.filter((j) => !isExample(j.project_id)).slice(0, 200),
+    };
+    saveState(snap).catch((e) => console.warn("Sauvegarde locale impossible", e));
+  }, 400);
+}
+
+/** Recharge les projets enregistrés et recrée les liens vers leurs fichiers. */
+async function restore() {
+  requestPersistence();
+  const snap = await loadState<Snapshot>();
+  if (!snap || snap.version !== 1) return;
+  if (snap.user) user = { ...user, ...snap.user };
+  for (const p of snap.projects) {
+    const blob = await getBlob(`p:${p.id}:source`);
+    const thumb = await getBlob(`p:${p.id}:thumb`);
+    if (blob) p.file = new File([blob], p.source?.original_filename ?? "video.mp4", { type: blob.type });
+    if (p.source) {
+      p.source.video_url = blob ? URL.createObjectURL(blob) : null;
+      p.source.thumbnail_url = thumb ? URL.createObjectURL(thumb) : null;
+      p.source.has_file = !!blob;
+    }
+    if (p.status === "processing" || p.status === "queued") {
+      p.status = "failed";
+      p.error = "Traitement interrompu (la page a été rechargée). Cliquez sur « Relancer ».";
+    }
+    projects.set(p.id, p);
+  }
+  for (const c of snap.clips) {
+    const [mp4, th, srt] = await Promise.all(["mp4", "thumb", "srt"].map((k) => getBlob(`c:${c.id}:${k}`)));
+    c.export_url = mp4 ? URL.createObjectURL(mp4) : null;
+    c.thumbnail_url = th ? URL.createObjectURL(th) : null;
+    c.srt_url = srt ? URL.createObjectURL(srt) : null;
+    c.source = projects.get(c.project_id)?.source ?? null;
+    if (c.status === "queued" || c.status === "rendering") {
+      c.status = mp4 ? "draft" : "failed";
+      c.error = "Rendu interrompu (la page a été rechargée). Relancez le rendu.";
+    }
+    if (c.status === "ready" && !mp4) c.status = "draft";
+    clips.set(c.id, c);
+  }
+  for (const j of snap.jobs) {
+    if (j.status === "queued" || j.status === "running") {
+      j.status = "failed";
+      j.error = "Interrompu par le rechargement de la page. Relancez.";
+      j.finished_at = now();
+    }
+    jobs.push(j);
+  }
 }
 
 // --------------------------------------------------------------------------- sérialisation
@@ -111,6 +182,7 @@ async function execute(j: Job) {
     }
   } finally {
     j.finished_at = now();
+    persist();
   }
 }
 
@@ -118,6 +190,7 @@ const step = (j: Job, name: string, progress: number, msg?: string) => {
   if (j.status === "cancelled") throw new LocalError("Tâche annulée");
   j.step = name; j.progress = progress;
   if (msg) log(j, msg);
+  persist();
 };
 const sub = (j: Job, lo: number, hi: number) => (f: number) => { j.progress = Math.round((lo + (hi - lo) * f) * 10) / 10; };
 
@@ -185,7 +258,7 @@ async function runAnalysis(j: Job) {
   step(j, "validate", 85, `${props.length} passage(s) retenu(s)`);
   if (!props.length) throw new LocalError("Aucun passage ne respecte les contraintes de durée. Essayez d'élargir la plage de durée.");
 
-  for (const c of projectClips(p.id)) if (c.selection_method !== "manual") clips.delete(c.id);
+  for (const c of projectClips(p.id)) if (c.selection_method !== "manual") { clips.delete(c.id); void deleteBlobs(`c:${c.id}:`); }
   const style = { ...defaultStyle, ...((user.default_subtitle_style as object) ?? {}) } as SubtitleStyle;
   for (const pr of props) {
     const [pace, measures] = measuredPace(words, pr.start, pr.end);
@@ -232,9 +305,12 @@ async function runRender(j: Job) {
     ass, normalize: es.normalize_audio, lufs: es.target_lufs, thumbAt,
   }, sub(j, 28, 97));
   for (const u of [c.export_url, c.thumbnail_url, c.srt_url]) if (u?.startsWith("blob:")) URL.revokeObjectURL(u);
+  const srtBlob = new Blob([buildSrt(outWords)], { type: "text/plain" });
+  await Promise.all([putBlob(`c:${c.id}:mp4`, out.mp4), putBlob(`c:${c.id}:thumb`, out.thumb), putBlob(`c:${c.id}:srt`, srtBlob)])
+    .catch(() => log(j, "Espace de stockage insuffisant : ce Short ne sera pas conservé après rechargement. Téléchargez-le.", "warning"));
   c.export_url = URL.createObjectURL(out.mp4);
   c.thumbnail_url = URL.createObjectURL(out.thumb);
-  c.srt_url = URL.createObjectURL(new Blob([buildSrt(outWords)], { type: "text/plain" }));
+  c.srt_url = URL.createObjectURL(srtBlob);
   c.duration = Math.round(out.duration * 100) / 100;
   c.status = "ready"; c.rendered_at = now(); c.updated_at = now();
   step(j, "done", 100, `Short rendu (${(out.mp4.size / 1e6).toFixed(1)} Mo)`);
@@ -254,7 +330,9 @@ export async function localUpload(projectId: string, file: File, onProgress: (l:
   const thumb = await thumbnail(file, Math.min(info.duration * 0.1, 10)).catch(() => null);
   onProgress(file.size, file.size);
   p.file = file; p.probe = info; p.transcript = undefined;
-  for (const c of projectClips(p.id)) clips.delete(c.id);
+  for (const c of projectClips(p.id)) { clips.delete(c.id); void deleteBlobs(`c:${c.id}:`); }
+  await putBlob(`p:${p.id}:source`, file).catch(() => undefined);
+  if (thumb) await putBlob(`p:${p.id}:thumb`, thumb).catch(() => undefined);
   p.source = {
     kind: "upload", youtube_url: null, original_filename: file.name, duration: info.duration, width: info.width, height: info.height,
     fps: info.fps, size_bytes: file.size, rights_confirmed: true, has_file: true,
@@ -262,6 +340,7 @@ export async function localUpload(projectId: string, file: File, onProgress: (l:
   };
   p.status = "draft";
   if (p.title === "Nouveau projet") p.title = file.name.replace(/\.[^.]+$/, "");
+  persist();
   return projectOut(p);
 }
 
@@ -269,6 +348,12 @@ export async function localUpload(projectId: string, file: File, onProgress: (l:
 const NEEDS_SERVER = "Indisponible en mode navigateur : cette fonction nécessite le serveur.";
 
 export async function localApi(path: string, method: string, json: unknown, body: BodyInit | null | undefined): Promise<unknown> {
+  const res = await route(path, method, json, body);
+  if (method !== "GET") persist();
+  return res;
+}
+
+async function route(path: string, method: string, json: unknown, body: BodyInit | null | undefined): Promise<unknown> {
   await seed();
   const url = new URL(path, "http://local");
   const pth = url.pathname, q = url.searchParams;
@@ -307,8 +392,10 @@ export async function localApi(path: string, method: string, json: unknown, body
     const rest = m[2] ?? "";
     if (!rest && method === "GET") return projectOut(p, true);
     if (!rest && method === "DELETE") {
-      for (const c of projectClips(p.id)) clips.delete(c.id);
+      for (const c of projectClips(p.id)) { clips.delete(c.id); void deleteBlobs(`c:${c.id}:`); }
       projects.delete(p.id);
+      void deleteBlobs(`p:${p.id}:`);
+      persist();
       return undefined;
     }
     if (!rest && method === "PATCH") { Object.assign(p, b); return projectOut(p); }
@@ -357,7 +444,7 @@ export async function localApi(path: string, method: string, json: unknown, body
     const p = projects.get(c.project_id)!;
     const rest = m[2] ?? "";
     if (!rest && method === "GET") return { ...c, source: p.source };
-    if (!rest && method === "DELETE") { clips.delete(c.id); return undefined; }
+    if (!rest && method === "DELETE") { clips.delete(c.id); void deleteBlobs(`c:${c.id}:`); persist(); return undefined; }
     if (rest === "/render") {
       if (p.example) throw new LocalError("Le clip d'exemple a été rendu par le serveur ; le re-rendu fonctionne sur vos propres vidéos.");
       if (!p.file) throw new LocalError("La vidéo source n'est plus en mémoire (page rechargée ?). Réimportez-la.");

@@ -1,4 +1,5 @@
 import { ArrowLeft, Check, Copy, Download, FolderDown, Pencil, Play, RefreshCw } from "lucide-react";
+import LoadError from "../components/LoadError";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ScoreBreakdown from "../components/ScoreBreakdown";
@@ -42,7 +43,7 @@ export default function ProjectClips() {
     try { await api(`/api/clips/${c.id}/render`, { method: "POST" }); load(); } catch (e) { setError((e as Error).message); }
   };
 
-  if (!project || !clips) return error ? <ErrorBox>{error}</ErrorBox> : <Spinner />;
+  if (!project || !clips) return error ? <LoadError message={error} /> : <Spinner />;
   const ready = clips.filter((c) => c.status === "ready").length;
 
   return (

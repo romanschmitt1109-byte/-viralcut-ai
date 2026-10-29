@@ -1,4 +1,5 @@
 import { ArrowLeft, Captions, Crop, Download, Image, Loader2, Save, Scissors, Send, Sparkles, Type, Wand2 } from "lucide-react";
+import LoadError from "../components/LoadError";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ScoreBreakdown from "../components/ScoreBreakdown";
@@ -144,7 +145,7 @@ export default function Editor() {
     } catch (e) { setError((e as Error).message); }
   };
 
-  if (!clip || !draft) return error ? <ErrorBox>{error}</ErrorBox> : <Spinner />;
+  if (!clip || !draft) return error ? <LoadError message={error} /> : <Spinner />;
   const src = clip.source;
   const st = CLIP_STATUS[clip.status] ?? CLIP_STATUS.draft;
   const rendering = clip.status === "queued" || clip.status === "rendering";
